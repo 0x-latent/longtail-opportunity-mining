@@ -1,0 +1,26 @@
+project_name: longtail-opportunity-mining
+language: zh
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  output_dir: data/output
+  sample_input: data/raw/sample_posts.csv
+labels:
+  file: config/labels/cold_cough_zh_v1.yaml
+pipeline:
+  dedup_subset:
+    - text_clean
+  residual_ratio_threshold: 0.15
+  save_formats:
+    - parquet
+    - csv
+matching:
+  dimension_priority:
+    - symptom
+    - scenario
+    - solution
+    - audience
+    - concern
+    - efficacy
+    - dosage_form
+    - emotion

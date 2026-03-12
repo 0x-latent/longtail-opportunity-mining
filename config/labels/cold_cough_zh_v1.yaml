@@ -1,0 +1,105 @@
+version: "1.0"
+language: zh
+notes: 中文 cold/cough v1 标签配置，优先覆盖 Phase 1 所需基础维度。
+dimensions:
+  scenario:
+    mask_token: "[SCENE]"
+    match_mode: phrase
+    entries:
+      - key: night
+        surface_forms: ["晚上", "夜里", "半夜", "睡前", "睡觉时", "夜间"]
+      - key: workplace
+        surface_forms: ["上班", "办公室", "开会", "通勤", "工作时"]
+      - key: school
+        surface_forms: ["上学", "学校", "教室", "考试周"]
+      - key: travel
+        surface_forms: ["出差", "旅行", "坐飞机", "高铁上"]
+      - key: home_rest
+        surface_forms: ["在家", "居家", "卧床", "休息时"]
+
+  symptom:
+    mask_token: "[SYMPTOM]"
+    match_mode: phrase
+    entries:
+      - key: cough
+        surface_forms: ["咳嗽", "一直咳", "干咳", "痰咳", "咳个不停"]
+      - key: sore_throat
+        surface_forms: ["喉咙痛", "嗓子痛", "咽痛", "喉咙不舒服", "嗓子发炎"]
+      - key: runny_nose
+        surface_forms: ["流鼻涕", "鼻塞", "鼻子不通气", "鼻涕很多"]
+      - key: fever
+        surface_forms: ["发烧", "低烧", "高烧", "体温高"]
+      - key: phlegm
+        surface_forms: ["有痰", "痰多", "黄痰", "白痰"]
+
+  solution:
+    mask_token: "[PRODUCT]"
+    match_mode: phrase
+    entries:
+      - key: lozenges
+        surface_forms: ["润喉糖", "含片", "喉糖"]
+      - key: syrup
+        surface_forms: ["止咳糖浆", "糖浆", "咳嗽药水"]
+      - key: tea
+        surface_forms: ["蜂蜜水", "蜂蜜柠檬", "热水", "姜茶"]
+      - key: tablet
+        surface_forms: ["感冒药", "退烧药", "胶囊", "片剂"]
+
+  audience:
+    mask_token: "[AUDIENCE]"
+    match_mode: phrase
+    entries:
+      - key: child
+        surface_forms: ["小孩", "孩子", "宝宝", "幼儿"]
+      - key: pregnant
+        surface_forms: ["孕妇", "怀孕", "哺乳期"]
+      - key: elderly
+        surface_forms: ["老人", "长辈", "老年人"]
+      - key: white_collar
+        surface_forms: ["打工人", "上班族", "白领"]
+
+  emotion:
+    mask_token: "[EMOTION]"
+    match_mode: phrase
+    entries:
+      - key: anxious
+        surface_forms: ["焦虑", "担心", "害怕", "慌"]
+      - key: annoyed
+        surface_forms: ["烦", "崩溃", "难受", "顶不住"]
+      - key: relieved
+        surface_forms: ["放心了", "缓过来了", "好一点了"]
+
+  efficacy:
+    mask_token: "[EFFICACY]"
+    match_mode: phrase
+    entries:
+      - key: fast_relief
+        surface_forms: ["见效快", "马上缓解", "立刻舒服"]
+      - key: no_effect
+        surface_forms: ["没效果", "不管用", "无效"]
+      - key: long_lasting
+        surface_forms: ["持续时间长", "能撑一晚", "不容易复发"]
+
+  dosage_form:
+    mask_token: "[FORM]"
+    match_mode: phrase
+    entries:
+      - key: liquid
+        surface_forms: ["糖浆", "口服液", "冲剂"]
+      - key: solid
+        surface_forms: ["胶囊", "片剂", "颗粒"]
+      - key: spray
+        surface_forms: ["喷雾", "雾化"]
+
+  concern:
+    mask_token: "[CONCERN]"
+    match_mode: phrase
+    entries:
+      - key: drowsy
+        surface_forms: ["犯困", "嗜睡", "想睡觉"]
+      - key: safety
+        surface_forms: ["副作用", "安全吗", "刺激性", "伤胃"]
+      - key: taste
+        surface_forms: ["太苦", "难喝", "味道重"]
+      - key: convenience
+        surface_forms: ["携带不方便", "不方便吃", "外出不好带"]
