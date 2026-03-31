@@ -21,7 +21,14 @@ def process_csv(config_path: str | Path, input_path: str | Path | None = None) -
     output_dir = Path(paths.get("output_dir", "data/output"))
     ensure_dirs(processed_dir, output_dir)
 
-    df = deduplicate_dataframe(normalize_dataframe(load_csv(raw_path)), subset=config.get("pipeline", {}).get("dedup_subset"))
+    ingest_cfg = config.get("ingest", {})
+    df = load_csv(
+        raw_path,
+        column_map=ingest_cfg.get("column_map"),
+        encoding=ingest_cfg.get("encoding"),
+    )
+    df = normalize_dataframe(df, min_text_len=ingest_cfg.get("min_text_len", 10))
+    df = deduplicate_dataframe(df, subset=config.get("pipeline", {}).get("dedup_subset"))
 
     matcher = LabelMatcher.from_yaml(
         config.get("labels", {}).get("file"),

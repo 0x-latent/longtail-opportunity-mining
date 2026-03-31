@@ -4,7 +4,7 @@ paths:
   raw_dir: data/raw
   processed_dir: data/processed
   output_dir: data/output
-  sample_input: data/raw/sample_posts.csv
+  sample_input: data/raw/三九小儿文本-0309.csv
 labels:
   file: config/labels/cold_cough_zh_v1.yaml
 pipeline:
