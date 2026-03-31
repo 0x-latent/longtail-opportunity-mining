@@ -38,7 +38,7 @@ def process_csv(config_path: str | Path, input_path: str | Path | None = None) -
     df = deduplicate_dataframe(df, subset=config.get("pipeline", {}).get("dedup_subset"))
 
     matcher = LabelMatcher.from_yaml(
-        config.get("labels", {}).get("file"),
+        _resolve(config.get("labels", {}).get("file")),
         dimension_priority=config.get("matching", {}).get("dimension_priority", []),
     )
     masker = Masker(matcher.mask_tokens)
