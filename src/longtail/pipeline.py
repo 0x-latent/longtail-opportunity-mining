@@ -14,11 +14,18 @@ from .utils import residual_ratio
 
 
 def process_csv(config_path: str | Path, input_path: str | Path | None = None) -> dict[str, Any]:
+    config_path = Path(config_path).resolve()
+    project_root = config_path.parent.parent  # config/ -> project root
     config = load_yaml(config_path)
     paths = config.get("paths", {})
-    raw_path = Path(input_path or paths.get("sample_input"))
-    processed_dir = Path(paths.get("processed_dir", "data/processed"))
-    output_dir = Path(paths.get("output_dir", "data/output"))
+
+    def _resolve(p: str | Path) -> Path:
+        p = Path(p)
+        return p if p.is_absolute() else project_root / p
+
+    raw_path = _resolve(input_path or paths.get("sample_input"))
+    processed_dir = _resolve(paths.get("processed_dir", "data/processed"))
+    output_dir = _resolve(paths.get("output_dir", "data/output"))
     ensure_dirs(processed_dir, output_dir)
 
     ingest_cfg = config.get("ingest", {})
