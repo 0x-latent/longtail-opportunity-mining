@@ -24,3 +24,36 @@ matching:
     - efficacy
     - dosage_form
     - emotion
+
+phase2:
+  residual_ratio_threshold: 0.15
+  min_text_tokens: 3
+
+  embedding:
+    model_name: "BAAI/bge-small-zh-v1.5"
+    batch_size: 256
+    normalize: true
+    cache_file: "data/processed/embeddings.npy"
+
+  umap:
+    n_components: 10
+    n_neighbors: 15
+    min_dist: 0.0
+    metric: "cosine"
+    random_state: 42
+
+  hdbscan:
+    min_cluster_size: 10
+    min_samples: 5
+    cluster_selection_method: "eom"
+    metric: "euclidean"
+
+  ctfidf:
+    ngram_range: [1, 3]
+    top_n_terms: 15
+    min_df: 2
+
+  output:
+    clusters_file: "data/output/clusters.json"
+    assignments_file: "data/processed/cluster_assignments.parquet"
+    summary_file: "data/output/phase2_summary.json"
