@@ -43,8 +43,8 @@ phase2:
     random_state: 42
 
   hdbscan:
-    min_cluster_size: 10
-    min_samples: 5
+    min_cluster_size: 50
+    min_samples: 10
     cluster_selection_method: "eom"
     metric: "euclidean"
 

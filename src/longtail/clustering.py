@@ -11,6 +11,18 @@ logger = logging.getLogger(__name__)
 
 MASK_PATTERN = re.compile(r"\[[A-Z_]+\]")
 
+# 中文停用词 + 标点 + 残留 mask 碎片
+_STOPWORDS = frozenset(
+    # 标点
+    list("，。！？、；：""''（）【】《》—…·~,.!?;:\"'()[]<>-/\\@#$%^&*+={}|`")
+    # 高频虚词
+    + "的 了 是 在 我 有 和 就 不 人 都 一 一个 上 也 很 到 说 要 去 你 会 着 没有 看 好 "
+      "自己 这 他 她 它 吗 吧 呢 啊 哦 嗯 呀 么 但 还 而 或 把 被 让 给 对 从 向 往 比 "
+      "这个 那个 什么 怎么 可以 因为 所以 如果 虽然 但是 而且 或者 以及 "
+      "这样 那样 这种 那种 那么 其实 已经 然后 之后 之前 "
+      "起来 出来 下去 过来 回来 知道 觉得 感觉 时候".split()
+)
+
 
 def reduce_embeddings(
     embeddings: np.ndarray,
@@ -117,7 +129,12 @@ def compute_ctfidf(
 
     def _tokenize(text: str) -> list[str]:
         tokens = tokenizer_fn(text)
-        return [t for t in tokens if not MASK_PATTERN.match(t)]
+        return [
+            t for t in tokens
+            if not MASK_PATTERN.match(t)
+            and t not in _STOPWORDS
+            and len(t.strip()) > 0
+        ]
 
     vectorizer = CountVectorizer(
         tokenizer=_tokenize,
