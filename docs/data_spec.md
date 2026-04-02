@@ -4,7 +4,28 @@
 
 ---
 
-## 一、原始数据（posts.csv）
+## 文件命名规范
+
+每个项目交付两个文件，命名格式：
+
+```
+{项目名}_{数据类型}_{日期}.csv
+```
+
+| 文件 | 命名格式 | 示例 |
+|------|---------|------|
+| 原始数据 | `{项目名}_posts_{YYYYMMDD}.csv` | `cold_cough_posts_20260401.csv` |
+| 标签表 | `{项目名}_labels_{YYYYMMDD}.csv` | `cold_cough_labels_20260401.csv` |
+
+**规则**：
+- 项目名使用英文小写+下划线（如 `cold_cough`、`baby_skin`、`allergy`）
+- 日期为交付日期
+- 同一项目的两个文件使用相同的项目名和日期
+- 如有数据更新，日期递增即可（如 `cold_cough_labels_20260415.csv`）
+
+---
+
+## 一、原始数据（{项目名}_posts_{日期}.csv）
 
 ### 格式要求
 
@@ -42,7 +63,7 @@ id,platform,date,title,text
 
 ---
 
-## 二、标签表（labels.csv）
+## 二、标签表（{项目名}_labels_{日期}.csv）
 
 ### 格式要求
 
