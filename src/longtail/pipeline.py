@@ -17,7 +17,11 @@ from .utils import residual_ratio, tokenize_chinese
 logger = logging.getLogger(__name__)
 
 
-def process_csv(config_path: str | Path, input_path: str | Path | None = None) -> dict[str, Any]:
+def process_csv(
+    config_path: str | Path,
+    input_path: str | Path | None = None,
+    labels_override: str | Path | None = None,
+) -> dict[str, Any]:
     config_path = Path(config_path).resolve()
     project_root = config_path.parent.parent  # config/ -> project root
     config = load_yaml(config_path)
@@ -41,8 +45,9 @@ def process_csv(config_path: str | Path, input_path: str | Path | None = None) -
     df = normalize_dataframe(df, min_text_len=ingest_cfg.get("min_text_len", 10))
     df = deduplicate_dataframe(df, subset=config.get("pipeline", {}).get("dedup_subset"))
 
+    labels_path = labels_override or _resolve(config.get("labels", {}).get("file"))
     matcher = LabelMatcher.from_yaml(
-        _resolve(config.get("labels", {}).get("file")),
+        labels_path,
         dimension_priority=config.get("matching", {}).get("dimension_priority", []),
     )
     masker = Masker(matcher.mask_tokens)

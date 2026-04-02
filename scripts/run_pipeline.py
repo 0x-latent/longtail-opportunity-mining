@@ -60,15 +60,23 @@ def main() -> None:
     _load_env()
 
     # 从 COS 同步数据
+    labels_yaml = None
     if args.sync:
         downloaded = _sync_from_cos(args.config, args.sync)
         print(f"  COS 同步完成: {downloaded}")
         # 如果没有指定 --input，自动使用下载的 posts 文件
         if args.input is None and "posts" in downloaded:
             args.input = str(downloaded["posts"])
+        # 自动将 labels CSV 转换为 YAML 词表
+        if "labels" in downloaded:
+            from longtail.label_convert import convert_labels_csv_to_yaml
+            labels_yaml = convert_labels_csv_to_yaml(
+                downloaded["labels"],
+                PROJECT_ROOT / "config" / "labels" / f"{args.sync}.yaml",
+            )
 
     if args.phase == 1:
-        result = process_csv(args.config, args.input)
+        result = process_csv(args.config, args.input, labels_override=labels_yaml)
     elif args.phase == 2:
         result = process_clusters(args.config)
 
