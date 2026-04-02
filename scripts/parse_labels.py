@@ -92,32 +92,24 @@ def parse_single_path(path_str: str) -> dict:
     """
     解析单条标签路径 (dot-separated) 为结构化字段。
 
-    品牌认知.产品特点.服务.客服态度.客服态度.客服态度
-    L0       L1       L2   L3       L4       L5
-    top_dim  sub1     sub2 canonical ---- surface_forms (去重) ----
+    只取前 4 层 (L0-L3)，后续层级多为重复的 surface forms，不再展开。
+
+    品牌认知.产品诉求.咳嗽.咳痰.咳痰.咳痰
+    L0       L1       L2   L3    (L4+ 忽略)
+    top_dim  sub1     sub2  sub3
+
+    方案.品类.药品-OTC.咳嗽和感冒制剂.羧甲司坦.片剂.羧甲司坦片
+    L0   L1   L2      L3              (L4+ 忽略)
     """
     parts = [p.strip() for p in path_str.split(".") if p.strip()]
-    result = {
+    return {
         "raw_path": path_str,
         "depth": len(parts),
         "top_dim": parts[0] if len(parts) > 0 else "",
         "sub1": parts[1] if len(parts) > 1 else "",
         "sub2": parts[2] if len(parts) > 2 else "",
-        "canonical_value": parts[3] if len(parts) > 3 else "",
+        "sub3": parts[3] if len(parts) > 3 else "",
     }
-    # L4+ 是 surface forms（用户原文表述），去重后以 ; 拼接
-    if len(parts) > 4:
-        # 去重但保持顺序
-        seen = set()
-        unique = []
-        for sf in parts[4:]:
-            if sf not in seen:
-                seen.add(sf)
-                unique.append(sf)
-        result["surface_forms"] = ";".join(unique)
-    else:
-        result["surface_forms"] = ""
-    return result
 
 
 def parse_label_string(label_str: str) -> list[dict]:
@@ -151,8 +143,11 @@ def process_file(filepath: str | Path, encoding: str | None = None) -> tuple[pd.
 
     # --- 1) labels_flat: 每行一条标签路径 ---
     flat_rows: list[dict] = []
-    # --- 2) labels_by_dim: 每帖每个维度的 canonical values ---
+    # --- 2) labels_by_dim: 每帖每个维度的 sub3 值 ---
     dim_map: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+
+    # 合法的顶层维度（过滤脏数据）
+    valid_top_dims = {"品牌认知", "场景", "需求", "方案"}
 
     for idx, row in df.iterrows():
         post_id = row[id_col] if id_col else idx
@@ -160,22 +155,24 @@ def process_file(filepath: str | Path, encoding: str | None = None) -> tuple[pd.
         parsed_paths = parse_label_string(str(label_str) if pd.notna(label_str) else "")
 
         for p in parsed_paths:
+            # 跳过 top_dim 不合法的脏数据
+            if p["top_dim"] not in valid_top_dims:
+                continue
             p["post_id"] = post_id
             p["source_file"] = filepath.name
             flat_rows.append(p)
             # 收集维度汇总
-            if p["canonical_value"]:
-                dim_map[idx][p["top_dim"]].append(p["canonical_value"])
+            if p["sub3"]:
+                dim_map[idx][p["top_dim"]].append(p["sub3"])
 
     flat_df = pd.DataFrame(flat_rows)
     if not flat_df.empty:
         # 调整列顺序
         cols = ["post_id", "source_file", "top_dim", "sub1", "sub2",
-                "canonical_value", "surface_forms", "depth", "raw_path"]
+                "sub3", "depth", "raw_path"]
         flat_df = flat_df[[c for c in cols if c in flat_df.columns]]
 
     # --- 构建 labels_by_dim pivot ---
-    # 收集所有 top_dim
     all_dims = sorted({p["top_dim"] for p in flat_rows if p["top_dim"]})
     pivot_rows: list[dict] = []
     for idx, row in df.iterrows():
@@ -216,10 +213,10 @@ def print_summary(flat_df: pd.DataFrame) -> None:
     print(f"  顶层维度:  {', '.join(sorted(top_dims))}")
     print()
 
-    # 每个维度的 Top-10 canonical values
+    # 每个维度的 Top-10 sub3 值
     for dim in sorted(top_dims):
         subset = flat_df[flat_df["top_dim"] == dim]
-        counts = subset["canonical_value"].value_counts().head(10)
+        counts = subset["sub3"].value_counts().head(10)
         print(f"  【{dim}】 — 共 {len(subset):,} 条路径")
         for val, cnt in counts.items():
             print(f"    {val:30s}  {cnt:>6,}")
