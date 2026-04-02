@@ -23,6 +23,9 @@ phase2 = [
   "scikit-learn>=1.3",
   "numpy>=1.24",
 ]
+cos = [
+  "cos-python-sdk-v5>=1.9",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

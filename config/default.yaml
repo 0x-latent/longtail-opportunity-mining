@@ -1,5 +1,10 @@
 project_name: longtail-opportunity-mining
 language: zh
+
+cos:
+  bucket: social-listening-1307163315
+  region: ap-guangzhou
+
 paths:
   raw_dir: data/raw
   processed_dir: data/processed

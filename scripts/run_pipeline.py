@@ -11,7 +11,39 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from longtail.config import load_yaml
 from longtail.pipeline import process_clusters, process_csv
+
+
+def _load_env():
+    """从 .env 文件加载环境变量（如果存在）。"""
+    env_path = PROJECT_ROOT / ".env"
+    if not env_path.exists():
+        return
+    import os
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+def _sync_from_cos(config_path: str, project: str) -> dict[str, Path]:
+    """从 COS 下载项目数据到 data/raw/。"""
+    from longtail.cos_client import sync_project
+
+    config = load_yaml(config_path)
+    cos_config = config.get("cos")
+    if not cos_config:
+        raise ValueError("config 中未配置 cos.bucket 和 cos.region")
+
+    config_path_resolved = Path(config_path).resolve()
+    project_root = config_path_resolved.parent.parent
+    raw_dir = project_root / config.get("paths", {}).get("raw_dir", "data/raw")
+
+    return sync_project(cos_config, project, raw_dir)
 
 
 def main() -> None:
@@ -20,9 +52,20 @@ def main() -> None:
     parser.add_argument("--input", default=None, help="Input CSV (Phase 1 only)")
     parser.add_argument("--phase", type=int, choices=[1, 2], default=1,
                         help="Pipeline phase: 1=preprocess, 2=clustering")
+    parser.add_argument("--sync", metavar="PROJECT",
+                        help="Sync data from COS before running (e.g. --sync cold_cough)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
+    _load_env()
+
+    # 从 COS 同步数据
+    if args.sync:
+        downloaded = _sync_from_cos(args.config, args.sync)
+        print(f"  COS 同步完成: {downloaded}")
+        # 如果没有指定 --input，自动使用下载的 posts 文件
+        if args.input is None and "posts" in downloaded:
+            args.input = str(downloaded["posts"])
 
     if args.phase == 1:
         result = process_csv(args.config, args.input)
