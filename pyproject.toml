@@ -25,6 +25,7 @@ phase2 = [
 ]
 cos = [
   "cos-python-sdk-v5>=1.9",
+  "flask>=3.0",
 ]
 
 [tool.pytest.ini_options]
