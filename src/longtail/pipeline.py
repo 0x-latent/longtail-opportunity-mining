@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import multiprocessing as mp
+import time
 from pathlib import Path
 import json
 from typing import Any
 
 import pandas as pd
+from tqdm import tqdm
 
 import logging
 
@@ -16,12 +19,48 @@ from .utils import residual_ratio, tokenize_chinese
 
 logger = logging.getLogger(__name__)
 
+# ---------- 多进程 worker ----------
+
+_worker_matcher: LabelMatcher
+_worker_masker: Masker
+_worker_mask_tokens: list[str]
+
+
+def _init_worker(label_config: dict, dimension_priority: list[str], mask_tokens: dict[str, str]):
+    """每个 worker 进程初始化自己的 matcher/masker，避免序列化开销。"""
+    global _worker_matcher, _worker_masker, _worker_mask_tokens
+    _worker_matcher = LabelMatcher(label_config, dimension_priority=dimension_priority)
+    _worker_masker = Masker(mask_tokens)
+    _worker_mask_tokens = list(mask_tokens.values())
+    # 预热 jieba（每个子进程各加载一次）
+    import jieba
+    jieba.setLogLevel(logging.WARNING)
+    jieba.initialize()
+
+
+def _process_row(row: dict[str, Any]) -> dict[str, Any]:
+    """单行处理：标签匹配 → masking → residual_ratio。"""
+    matches = _worker_matcher.match(row["text_clean"])
+    text_masked = _worker_masker.soft_mask(row["text_clean"], matches)
+    text_hard_filtered = _worker_masker.hard_filter(row["text_clean"], matches)
+    return {
+        **row,
+        "text_masked": text_masked,
+        "text_hard_filtered": text_hard_filtered,
+        "matched_labels": json.dumps([m.to_dict() for m in matches], ensure_ascii=False),
+        "label_counts": json.dumps(_worker_matcher.count_by_dimension(matches), ensure_ascii=False),
+        "residual_ratio": residual_ratio(text_masked, _worker_mask_tokens),
+    }
+
 
 def process_csv(
     config_path: str | Path,
     input_path: str | Path | None = None,
     labels_override: str | Path | None = None,
+    n_workers: int | None = None,
+    project: str | None = None,
 ) -> dict[str, Any]:
+    t_start = time.time()
     config_path = Path(config_path).resolve()
     project_root = config_path.parent.parent  # config/ -> project root
     config = load_yaml(config_path)
@@ -34,50 +73,78 @@ def process_csv(
     raw_path = _resolve(input_path or paths.get("sample_input"))
     processed_dir = _resolve(paths.get("processed_dir", "data/processed"))
     output_dir = _resolve(paths.get("output_dir", "data/output"))
+    if project:
+        processed_dir = processed_dir / project
+        output_dir = output_dir / project
     ensure_dirs(processed_dir, output_dir)
 
+    # ── 1. 加载 CSV ──
+    print(f"[1/5] 加载 CSV: {raw_path.name}")
+    t0 = time.time()
     ingest_cfg = config.get("ingest", {})
     df = load_csv(
         raw_path,
         column_map=ingest_cfg.get("column_map"),
         encoding=ingest_cfg.get("encoding"),
     )
+    print(f"      {len(df)} 行, 耗时 {time.time() - t0:.1f}s")
+
+    # ── 2. 文本清洗 + 去重 ──
+    print("[2/5] 文本清洗 + 去重")
+    t0 = time.time()
     df = normalize_dataframe(df, min_text_len=ingest_cfg.get("min_text_len", 10))
     df = deduplicate_dataframe(df, subset=config.get("pipeline", {}).get("dedup_subset"))
+    print(f"      剩余 {len(df)} 行, 耗时 {time.time() - t0:.1f}s")
 
+    # ── 3. 加载标签词表 ──
     labels_path = labels_override or _resolve(config.get("labels", {}).get("file"))
+    print(f"[3/5] 加载标签词表: {Path(labels_path).name}")
     matcher = LabelMatcher.from_yaml(
         labels_path,
         dimension_priority=config.get("matching", {}).get("dimension_priority", []),
     )
-    masker = Masker(matcher.mask_tokens)
-    all_mask_tokens = list(matcher.mask_tokens.values())
+    n_patterns = len(matcher.patterns)
+    n_dims = len(matcher.mask_tokens)
+    print(f"      {n_dims} 个维度, {n_patterns} 条匹配规则")
 
-    processed_rows: list[dict[str, Any]] = []
-    for row in df.to_dict(orient="records"):
-        matches = matcher.match(row["text_clean"])
-        text_masked = masker.soft_mask(row["text_clean"], matches)
-        text_hard_filtered = masker.hard_filter(row["text_clean"], matches)
-        processed_rows.append(
-            {
-                **row,
-                "text_masked": text_masked,
-                "text_hard_filtered": text_hard_filtered,
-                "matched_labels": json.dumps([m.to_dict() for m in matches], ensure_ascii=False),
-                "label_counts": json.dumps(matcher.count_by_dimension(matches), ensure_ascii=False),
-                "residual_ratio": residual_ratio(text_masked, all_mask_tokens),
-            }
-        )
+    # ── 4. 标签匹配 + Masking (多进程) ──
+    rows = df.to_dict(orient="records")
+    if n_workers is None:
+        n_workers = min(mp.cpu_count() or 4, 16)
+    chunksize = max(1, len(rows) // (n_workers * 4))
+    print(f"[4/5] 标签匹配: {len(rows)} 行, {n_workers} 进程并行 (chunksize={chunksize})")
+    t0 = time.time()
 
+    with mp.Pool(
+        processes=n_workers,
+        initializer=_init_worker,
+        initargs=(matcher.label_config, matcher.dimension_priority, matcher.mask_tokens),
+    ) as pool:
+        processed_rows = list(tqdm(
+            pool.imap(_process_row, rows, chunksize=chunksize),
+            total=len(rows),
+            desc="      匹配进度",
+            unit="行",
+            smoothing=0.05,
+        ))
+    print(f"      匹配完成, 耗时 {time.time() - t0:.1f}s")
+
+    # ── 5. 保存结果 ──
+    print("[5/5] 保存结果")
+    t0 = time.time()
     processed_df = pd.DataFrame(processed_rows)
     files = write_processed(processed_df, processed_dir)
     metadata = build_metadata(processed_df)
     metadata_path = output_dir / "phase1_summary.json"
     metadata_path.write_text(json.dumps({**metadata, "files": files}, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"      保存完成, 耗时 {time.time() - t0:.1f}s")
+
+    total_time = time.time() - t_start
+    print(f"\n  Phase 1 完成: {len(processed_df)} 行, 总耗时 {total_time:.1f}s ({total_time/60:.1f}min)")
     return {"files": files, "summary": str(metadata_path), "rows": len(processed_df)}
 
 
-def process_clusters(config_path: str | Path) -> dict[str, Any]:
+def process_clusters(config_path: str | Path, project: str | None = None) -> dict[str, Any]:
     """Phase 2: filter → embed → UMAP → HDBSCAN → c-TF-IDF → output."""
     import numpy as np
 
@@ -96,6 +163,8 @@ def process_clusters(config_path: str | Path) -> dict[str, Any]:
 
     # 1. Load Phase 1 output
     processed_dir = _resolve(paths.get("processed_dir", "data/processed"))
+    if project:
+        processed_dir = processed_dir / project
     input_path = processed_dir / "processed_posts.parquet"
     if not input_path.exists():
         raise FileNotFoundError(f"Phase 1 output not found: {input_path}. Run Phase 1 first.")
@@ -119,7 +188,7 @@ def process_clusters(config_path: str | Path) -> dict[str, Any]:
 
     # 3. Embed
     emb_cfg = p2.get("embedding", {})
-    cache_path = _resolve(emb_cfg.get("cache_file", "data/processed/embeddings.npy"))
+    cache_path = processed_dir / "embeddings.npy"
     embeddings = embed_texts(
         texts=df_cluster["text_masked"].tolist(),
         model_name=emb_cfg.get("model_name", "BAAI/bge-small-zh-v1.5"),
@@ -172,16 +241,18 @@ def process_clusters(config_path: str | Path) -> dict[str, Any]:
     # 8. Save outputs
     output_cfg = p2.get("output", {})
     output_dir = _resolve(paths.get("output_dir", "data/output"))
+    if project:
+        output_dir = output_dir / project
     ensure_dirs(output_dir, processed_dir)
 
     # 8a. Cluster assignments parquet
-    assignments_path = _resolve(output_cfg.get("assignments_file", "data/processed/cluster_assignments.parquet"))
+    assignments_path = processed_dir / "cluster_assignments.parquet"
     df_assignments = df_cluster[["post_id"]].copy()
     df_assignments["cluster_id"] = labels
     df_assignments.to_parquet(assignments_path, index=False)
 
     # 8b. Cluster details JSON (truncate post_ids for readability)
-    clusters_path = _resolve(output_cfg.get("clusters_file", "data/output/clusters.json"))
+    clusters_path = output_dir / "clusters.json"
     summaries_for_json = []
     for s in summaries:
         s_copy = {**s}
@@ -213,7 +284,7 @@ def process_clusters(config_path: str | Path) -> dict[str, Any]:
             "embeddings_cache": str(cache_path),
         },
     }
-    summary_path = _resolve(output_cfg.get("summary_file", "data/output/phase2_summary.json"))
+    summary_path = output_dir / "phase2_summary.json"
     summary_path.write_text(json.dumps(summary_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"  Phase 2 完成: {n_clusters} 个聚类, noise ratio={noise_ratio:.1%}, "

@@ -11,6 +11,7 @@ from .utils import normalize_text
 # 默认列名映射：原始 CSV 列名 → 标准列名
 DEFAULT_COLUMN_MAP = {
     "ID": "post_id",
+    "id": "post_id",
     "文本": "text",
     "标签": "labels_raw",
     "平台": "platform",
